@@ -28,40 +28,47 @@ def generate_document():
     try:
         # Obtener el payload en formato JSON
         data = request.get_json()
-        logging.debug(f"Datos recibidos: {data}")
         template_base64 = data.get('template')
         template_data = base64.b64decode(template_base64)
 
-        # Guardar la plantilla temporalmente en un archivo
-        temp_template_path = os.path.join(tempfile.gettempdir(), 'template.docx')
-        with open(temp_template_path, 'wb') as template_file:
-            template_file.write(template_data)
+        # Usar NamedTemporaryFile para nombres de archivo únicos
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as temp_template_file:
+            temp_template_path = temp_template_file.name
+            temp_template_file.write(template_data)
             logging.debug(f"Plantilla guardada en: {temp_template_path}")
 
         # Cargar la plantilla DOCX con docxtpl
         doc = DocxTemplate(temp_template_path)
         context = data.get('data', {})
-        logging.debug(f"Rellenando plantilla con contexto: {context}")
         doc.render(context)
 
-        # Guardar el documento rellenado
-        filled_docx_path = os.path.join(tempfile.gettempdir(), 'filled_template.docx')
-        doc.save(filled_docx_path)
-        logging.debug(f"Documento rellenado guardado en: {filled_docx_path}")
+        # Guardar el documento rellenado en un archivo temporal
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as filled_docx_file:
+            filled_docx_path = filled_docx_file.name
+            doc.save(filled_docx_path)
+            logging.debug(f"Documento rellenado guardado en: {filled_docx_path}")
 
         # Determinar el formato de salida
         output_format = data.get('output_format', 'docx')  # Valor por defecto 'docx'
         if output_format == 'pdf':
             # Convertir el DOCX a PDF
-            output_pdf_path = os.path.join(tempfile.gettempdir(), 'filled_template.pdf')
-            convert_docx_to_pdf(filled_docx_path, output_pdf_path)
-            logging.debug(f"Documento PDF generado en: {output_pdf_path}")
-            return send_file(output_pdf_path, as_attachment=True)
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as output_pdf_file:
+                output_pdf_path = output_pdf_file.name
+                convert_docx_to_pdf(filled_docx_path, output_pdf_path)
+                logging.debug(f"Documento PDF generado en: {output_pdf_path}")
+                response = send_file(output_pdf_path, as_attachment=True)
+                os.remove(output_pdf_path)
 
-        # Si el formato de salida es DOCX
-        logging.debug(f"Enviando archivo DOCX: {filled_docx_path}")
-        return send_file(filled_docx_path, as_attachment=True)
+        else:
+            # Si el formato de salida es DOCX
+            logging.debug(f"Enviando archivo DOCX: {filled_docx_path}")
+            response = send_file(filled_docx_path, as_attachment=True)
+        
+        os.remove(temp_template_path)
+        os.remove(filled_docx_path)
 
+        return response
+    
     except Exception as e:
         logging.error(f"Error al generar documento: {str(e)}")
         return jsonify({"error": str(e)}), 500
