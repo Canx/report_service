@@ -21,7 +21,7 @@ payload = {
         {"nombre": "Pedro", "edad": 30, "ciudad": "Sevilla"}
         ]
     },
-    "output_format": "docx"
+    "output_format": "pdf"
 }
 
 # Hacer la solicitud POST al servidor Flask
@@ -33,7 +33,7 @@ response = requests.post(url, headers=headers, data=json.dumps(payload))
 # Verificar si la respuesta fue exitosa
 if response.status_code == 200:
     # Guardar el archivo descargado
-    output_filename = 'output.docx'  # Cambia a 'output.docx' si es el formato solicitado
+    output_filename = 'output.pdf'  # Cambia a 'output.pdf' si es el formato solicitado
     with open(output_filename, 'wb') as f:
         f.write(response.content)
     print(f"Archivo guardado como {output_filename}")
