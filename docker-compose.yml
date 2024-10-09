@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    restart: on-failure
+    volumes:
+      - .:/app
+    expose:
+      - "8000"  # Exponer el puerto para el contenedor Gunicorn
+
+  nginx:
+    image: nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - "80:80"  # Mapear el puerto 80 del host al contenedor Nginx
+    depends_on:
+      - app  # Asegurarse de que la aplicación esté en funcionamiento antes de iniciar Nginx
