@@ -30,7 +30,7 @@ headers = {"Content-Type": "application/json"}
 # Función para hacer la solicitud y guardar el archivo
 def make_request_and_save(output_format):
     # Modificar el payload para el formato solicitado
-    payload["output_format"] = output_format
+    payload["formato"] = output_format
     
     # Hacer la solicitud POST al servidor Flask
     response = requests.post(url, headers=headers, data=json.dumps(payload))

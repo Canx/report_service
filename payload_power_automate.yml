@@ -1,0 +1,13 @@
+{
+    "plantilla": "ejemplo.docx",
+    "formato": "docx",
+    "data": {
+        "nombre": "Empresa XYZ",
+        "fecha": "2024-10-08",
+        "usuarios": [
+            {"nombre": "Juan", "edad": 28, "ciudad": "Madrid"},
+            {"nombre": "Ana", "edad": 22, "ciudad": "Barcelona"},
+            {"nombre": "Pedro", "edad": 30, "ciudad": "Sevilla"}
+        ]
+    }
+}
