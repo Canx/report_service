@@ -3,14 +3,14 @@ import requests
 import json
 
 # Ruta del archivo .docx que quieres codificar
-docx_file_path = 'templates/example1.docx'
+docx_file_path = 'templates/informe_NESE.docx'
 
 # Leer el archivo en binario y convertirlo a base64
 with open(docx_file_path, 'rb') as file:
     encoded_template = base64.b64encode(file.read()).decode('utf-8')
 
 # Crear el payload común
-payload = {
+payload_old = {
     "template": encoded_template,
     "data": {
         "nombre": "Empresa XYZ",
@@ -19,6 +19,24 @@ payload = {
             {"nombre": "Juan", "edad": 28, "ciudad": "Madrid"},
             {"nombre": "Ana", "edad": 22, "ciudad": "Barcelona"},
             {"nombre": "Pedro", "edad": 30, "ciudad": "Sevilla"}
+        ]
+    }
+}
+
+payload = {
+    "template": encoded_template,
+    "formato": "pdf",
+    "data": {
+        "alumno": {
+            "nombre": "ANTONIO",
+            "apellidos": "PEREZ PEREZ",
+            "grupo": "2ESOC"
+        },
+        "medidas": [
+            { "profesor": { "Id": 1, "Value": 123},
+              "medida": { "Id": 1, "Value": "SIN ADAPTACION"},
+              "descripcion": "<i>muy bien</i><br><ol><li>Elemento 1</li><li>Elemento 2</li></ol>"
+            }
         ]
     }
 }
