@@ -1,6 +1,8 @@
 from flask import Flask, request, send_file, jsonify
 from docxtpl import DocxTemplate, RichText
 from jinja2 import Environment, BaseLoader
+import tempfile
+from html4docx import HtmlToDocx
 from bs4 import BeautifulSoup
 import base64
 import os
@@ -11,6 +13,27 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
+
+def html_to_docx(html, tpl):
+    """
+    Convierte una cadena HTML en un subdocumento DOCX usando html-for-docx y lo
+    carga en la plantilla tpl.
+    """
+    # Crear el parser de html-for-docx
+    parser = HtmlToDocx()
+    # Utilizamos parse_html_string para obtener un objeto Document
+    document = parser.parse_html_string(html)
+    
+    # Guardamos el documento en un archivo temporal
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
+        tmp_path = tmp.name
+    document.save(tmp_path)
+    
+    # Creamos el subdocumento a partir del archivo generado
+    subdoc = tpl.new_subdoc(tmp_path)
+    
+    return subdoc
+
 
 def html_to_richtext(html):
     soup = BeautifulSoup(html, 'html.parser')
@@ -111,7 +134,9 @@ def generate_document():
         try:
             env = Environment(loader=BaseLoader(), autoescape=False)
             env.filters['html_to_richtext'] = html_to_richtext
+            env.filters['html_to_docx'] = lambda html: html_to_docx(html, doc)
             doc.render(context, jinja_env=env)
+            
         except Exception as e:
             logging.error(f"Error al renderizar la plantilla: {str(e)}")
             return jsonify({"error": "Error al renderizar la plantilla con los datos proporcionados."}), 400
