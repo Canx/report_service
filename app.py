@@ -115,10 +115,10 @@ def convert_docx_to_pdf(docx_path, pdf_path):
     """Convierte un archivo DOCX a PDF usando unoconv."""
     try:
         os.environ['PYTHONPATH'] = '/usr/lib/python3/dist-packages/'
-        logging.debug(f"Convirtiendo {docx_path} a {pdf_path} usando unoconv.")
+        logging.debug(f"Convirtiendo {docx_path} a {pdf_path} usando unoconvert.")
         
         # Modificación: pasa la ruta de salida como argumento
-        result = subprocess.run(['unoconv', '-f', 'pdf', '-o', pdf_path, docx_path], 
+        result = subprocess.run(['unoconvert', '--convert-to', 'pdf', docx_path, pdf_path], 
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if result.returncode != 0:
@@ -202,8 +202,8 @@ def generate_document():
             logging.debug(f"Enviando archivo DOCX: {filled_docx_path}")
             response = send_file(filled_docx_path, as_attachment=True)
         
-        os.remove(temp_template_path)
-        os.remove(filled_docx_path)
+        #os.remove(temp_template_path)
+        #os.remove(filled_docx_path)
 
         return response
     

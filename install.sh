@@ -9,7 +9,9 @@ SERVICE_FILE="/etc/systemd/system/mi_app.service"
 
 # Instalar unoconv
 echo "Instalando unoconv..."
-sudo apt-get update
+sudo add-apt-repository ppa:libreoffice/ppa
+sudo apt update
+sudo apt install libreoffice
 sudo apt-get install -y unoconv
 
 # Crear el entorno virtual si no existe
@@ -17,6 +19,8 @@ if [ ! -d "$VENV_PATH" ]; then
     echo "Creando entorno virtual en $VENV_PATH"
     python3 -m venv "$VENV_PATH"
 fi
+
+pyenv exec pip install setuptools
 
 # Activar el entorno virtual
 source "$VENV_PATH/bin/activate"
