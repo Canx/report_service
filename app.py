@@ -2,7 +2,7 @@ from flask import Flask, request, send_file, jsonify
 from docxtpl import DocxTemplate, RichText
 from jinja2 import Environment, BaseLoader
 import tempfile
-from html4docx import HtmlToDocx
+from html4docx.h4d import HtmlToDocx
 from bs4 import BeautifulSoup
 import base64
 import os
