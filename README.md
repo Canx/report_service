@@ -3,13 +3,13 @@
 ## Installation
 
 ```
-sudo apt install unoconv
 sudo pip install -r requirements
 ```
 
 ## Execution
 
 ```
+unoserver
 start_service.sh
 ```
 
