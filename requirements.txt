@@ -1,5 +1,8 @@
 Flask
 python-docx
-docxtpl
+git+https://github.com/Canx/python-docx-template.git@subdoc_fix
 PyPDF2
 gunicorn
+urllib3
+idna
+certifi
