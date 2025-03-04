@@ -2,37 +2,71 @@ from flask import Flask, request, send_file, jsonify
 from docxtpl import DocxTemplate, RichText
 from jinja2 import Environment, BaseLoader
 import tempfile
-from html4docx import HtmlToDocx
+from html4docx.h4d import HtmlToDocx
 from bs4 import BeautifulSoup
 import base64
 import os
 import tempfile
 import subprocess
 import logging
+import re
+
 
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
+
+
+
+def looks_like_html(text):
+    """
+    Comprueba si la cadena parece contener etiquetas HTML.
+    """
+    return bool(re.search(r'<[^>]+>', text))
 
 def html_to_docx(html, tpl):
     """
     Convierte una cadena HTML en un subdocumento DOCX usando html-for-docx y lo
     carga en la plantilla tpl.
     """
-    # Crear el parser de html-for-docx
     parser = HtmlToDocx()
-    # Utilizamos parse_html_string para obtener un objeto Document
+    # Convertir la cadena HTML a un objeto Document
     document = parser.parse_html_string(html)
     
-    # Guardamos el documento en un archivo temporal
+    # Guardar el documento en un archivo temporal
     with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
         tmp_path = tmp.name
     document.save(tmp_path)
     
-    # Creamos el subdocumento a partir del archivo generado
+    #subdoc2 = tpl.new_subdoc("test.docx")
+    # Crear el subdocumento a partir del archivo generado
     subdoc = tpl.new_subdoc(tmp_path)
     
     return subdoc
+
+def process_context(context, tpl):
+    """
+    Recorre recursivamente el contexto y, si encuentra una cadena que parece HTML,
+    la reemplaza por el objeto subdocumento generado.
+    
+    Esta función revisa:
+      - Si context es un diccionario, recorre sus claves.
+      - Si context es una lista, recorre cada elemento.
+      - Si se encuentra un objeto que sea diccionario o lista anidada, se llama a la función de forma recursiva.
+    """
+    if isinstance(context, dict):
+        for key, value in context.items():
+            if isinstance(value, str) and looks_like_html(value):
+                context[key] = html_to_docx(value, tpl)
+            elif isinstance(value, (dict, list)):
+                process_context(value, tpl)
+    elif isinstance(context, list):
+        for i, item in enumerate(context):
+            if isinstance(item, str) and looks_like_html(item):
+                context[i] = html_to_docx(item, tpl)
+            elif isinstance(item, (dict, list)):
+                process_context(item, tpl)
+
 
 
 def html_to_richtext(html):
@@ -132,11 +166,12 @@ def generate_document():
         # Rellenar la plantilla con los datos proporcionados
         context = data.get('data', {})
         try:
-            env = Environment(loader=BaseLoader(), autoescape=False)
-            env.filters['html_to_richtext'] = html_to_richtext
-            env.filters['html_to_docx'] = lambda html: html_to_docx(html, doc)
-            doc.render(context, jinja_env=env)
-            
+            #env = Environment(loader=BaseLoader(), autoescape=False)
+            #env.filters['html2richtext'] = html_to_richtext
+            #env.filters['html2docx'] = lambda html: html_to_docx(html, doc)
+            process_context(context, doc)
+            doc.render(context) #p, jinja_env=env)
+
         except Exception as e:
             logging.error(f"Error al renderizar la plantilla: {str(e)}")
             return jsonify({"error": "Error al renderizar la plantilla con los datos proporcionados."}), 400
