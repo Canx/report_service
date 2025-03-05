@@ -1,3 +1,4 @@
+setuptools
 Flask
 python-docx
 git+https://github.com/Canx/python-docx-template.git@subdoc_fix

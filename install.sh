@@ -8,22 +8,21 @@ GUNICORN_CMD="$VENV_PATH/bin/gunicorn -w 4 -b 127.0.0.1:8000 app:app"
 SERVICE_FILE="/etc/systemd/system/mi_app.service"
 
 # Instalar unoconv
-echo "Instalando unoconv..."
+echo "Instalando libreoffice..."
 sudo add-apt-repository ppa:libreoffice/ppa
 sudo apt update
 sudo apt install libreoffice
-sudo apt-get install -y unoconv
 
 # Crear el entorno virtual si no existe
 if [ ! -d "$VENV_PATH" ]; then
     echo "Creando entorno virtual en $VENV_PATH"
-    python3 -m venv "$VENV_PATH"
+    python3 -m venv --system-site-packages "$VENV_PATH"
 fi
-
-pyenv exec pip install setuptools
 
 # Activar el entorno virtual
 source "$VENV_PATH/bin/activate"
+
+
 
 # Instalar paquetes necesarios
 if [ -f "$WORKING_DIR/requirements.txt" ]; then
