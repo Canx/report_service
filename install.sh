@@ -12,6 +12,8 @@ echo "Instalando libreoffice..."
 sudo add-apt-repository ppa:libreoffice/ppa
 sudo apt update
 sudo apt install libreoffice
+sudo apt install python3-pip
+sudo apt install python3-venv
 
 # Crear el entorno virtual si no existe
 if [ ! -d "$VENV_PATH" ]; then
