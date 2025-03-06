@@ -1,8 +1,6 @@
 from flask import Flask, request, send_file, jsonify
 from docxtpl import DocxTemplate, RichText
-from jinja2 import Environment, BaseLoader
 import tempfile
-from html4docx.h4d import HtmlToDocx
 from bs4 import BeautifulSoup
 import base64
 import os
@@ -26,23 +24,55 @@ def looks_like_html(text):
 
 def html_to_docx(html, tpl):
     """
-    Convierte una cadena HTML en un subdocumento DOCX usando html-for-docx y lo
-    carga en la plantilla tpl.
+    Convierte una cadena HTML en un subdocumento DOCX usando un proceso de conversión intermedia:
+    HTML -> ODT -> DOCX.
+    Se guarda el HTML en un archivo temporal, se convierte a ODT y luego se convierte a DOCX usando unoconvert.
+    Finalmente, se carga el DOCX en la plantilla tpl.
     """
-    parser = HtmlToDocx()
-    # Convertir la cadena HTML a un objeto Document
-    document = parser.parse_html_string(html)
-    
-    # Guardar el documento en un archivo temporal
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
-        tmp_path = tmp.name
-    document.save(tmp_path)
-    
-    #subdoc2 = tpl.new_subdoc("test.docx")
-    # Crear el subdocumento a partir del archivo generado
-    subdoc = tpl.new_subdoc(tmp_path)
-    
+    import subprocess
+
+    # Guardar el HTML en un archivo temporal
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".html", mode='w', encoding='utf-8') as tmp_html:
+        tmp_html.write(html)
+        tmp_html_path = tmp_html.name
+
+    # Archivo temporal para el ODT intermedio
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".odt") as tmp_odt:
+        tmp_odt_path = tmp_odt.name
+
+    # Convertir HTML a ODT
+    result_odt = subprocess.run(
+        ['unoconvert', '--convert-to', 'odt', tmp_html_path, tmp_odt_path],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    if result_odt.returncode != 0:
+        error_msg = result_odt.stderr.decode()
+        raise Exception("Error al convertir HTML a ODT con unoconvert: " + error_msg)
+
+    # Archivo temporal para el DOCX final
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp_docx:
+        tmp_docx_path = tmp_docx.name
+
+    # Convertir ODT a DOCX
+    result_docx = subprocess.run(
+        ['unoconvert', '--convert-to', 'docx', tmp_odt_path, tmp_docx_path],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    if result_docx.returncode != 0:
+        error_msg = result_docx.stderr.decode()
+        raise Exception("Error al convertir ODT a DOCX con unoconvert: " + error_msg)
+
+    # Cargar el documento DOCX generado como subdocumento en la plantilla
+    subdoc = tpl.new_subdoc(tmp_docx_path)
+
+    # Opcional: eliminar los archivos temporales
+    os.remove(tmp_html_path)
+    os.remove(tmp_odt_path)
+    os.remove(tmp_docx_path)
+
     return subdoc
+
+
 
 def process_context(context, tpl):
     """

@@ -7,5 +7,4 @@ gunicorn
 urllib3
 idna
 certifi
-html-for-docx
 unoserver
