@@ -8,12 +8,76 @@ import tempfile
 import subprocess
 import logging
 import re
+import time
+import subprocess
+import unicodedata
+import json
 
 
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 
+
+def save_json_for_debugging(context, filename="debug_context.json"):
+    """
+    Guarda el JSON del contexto en un archivo para análisis posterior.
+    """
+    debug_path = os.path.join("/tmp", filename)  # Ruta en /tmp (cámbiala si es necesario)
+                       
+    try:
+        with open(debug_path, "w", encoding="utf-8") as f:
+            json.dump(context, f, indent=4, ensure_ascii=False)
+            logging.debug(f"Contexto guardado para análisis en: {debug_path}")
+    except Exception as e:
+        logging.error(f"Error al guardar el JSON de depuración: {str(e)}")
+
+
+def clean_html(html):
+    """
+    Limpia el HTML antes de pasarlo a la conversión a DOCX.
+    """
+    try:
+        # 1. Decodificar entidades HTML (&amp;, &#160;, etc.)
+        html = html.replace("&#58;", ":").replace("&#160;", " ")
+
+        # 2. Usar BeautifulSoup para limpiar estilos y etiquetas raras
+        soup = BeautifulSoup(html, "html.parser")
+
+        # 3. Eliminar `div.ExternalClass...`
+        for div in soup.find_all("div", class_=re.compile(r"ExternalClass")):
+            div.unwrap()  # Quita el div y deja el contenido dentro
+
+        # 4. Eliminar estilos innecesarios (color, background, etc.)
+        for tag in soup.find_all(["span", "p", "h1", "h3"]):
+            if tag.has_attr("style"):
+                del tag["style"]  # Borra estilos problemáticos
+
+        # 5. Retornar el HTML limpio
+        return str(soup)
+
+    except Exception as e:
+        logging.error(f"Error al limpiar HTML: {str(e)}")
+        return html  # Si algo falla, devolver HTML original
+
+
+
+def normalize_unicode(data):
+    """
+    Recursivamente normaliza todas las cadenas de texto en un JSON.
+     - Convierte caracteres Unicode raros a su forma estándar.
+     - Elimina espacios en blanco extra.
+    """
+    if isinstance(data, str):
+        return unicodedata.normalize("NFKC", data).strip()  # Normalizar texto
+
+    elif isinstance(data, list):
+        return [normalize_unicode(item) for item in data]  # Recorrer listas
+
+    elif isinstance(data, dict):
+        return {key: normalize_unicode(value) for key, value in data.items()}  # Recorrer diccionarios
+
+    return data  # Devolver valores no texto sin cambios
 
 
 def looks_like_html(text):
@@ -29,7 +93,7 @@ def html_to_docx(html, tpl):
     Se guarda el HTML en un archivo temporal, se convierte a ODT y luego se convierte a DOCX usando unoconvert.
     Finalmente, se carga el DOCX en la plantilla tpl.
     """
-    import subprocess
+    start_time = time.time()  # Iniciar temporizador
 
     # Guardar el HTML en un archivo temporal
     with tempfile.NamedTemporaryFile(delete=False, suffix=".html", mode='w', encoding='utf-8') as tmp_html:
@@ -65,6 +129,8 @@ def html_to_docx(html, tpl):
     # Cargar el documento DOCX generado como subdocumento en la plantilla
     subdoc = tpl.new_subdoc(tmp_docx_path)
 
+    logging.debug(f"HTML convertido en {time.time() - start_time:.2f} segundos")
+
     # Opcional: eliminar los archivos temporales
     os.remove(tmp_html_path)
     os.remove(tmp_odt_path)
@@ -87,12 +153,15 @@ def process_context(context, tpl):
     if isinstance(context, dict):
         for key, value in context.items():
             if isinstance(value, str) and looks_like_html(value):
+                logging.debug(f"Limpiando HTML en {key}")
+                value = clean_html(value)  # Aplicar la limpieza antes de la conversión
                 context[key] = html_to_docx(value, tpl)
             elif isinstance(value, (dict, list)):
                 process_context(value, tpl)
     elif isinstance(context, list):
         for i, item in enumerate(context):
             if isinstance(item, str) and looks_like_html(item):
+                item = clean_html(item)  # Añadir limpieza aquí también
                 context[i] = html_to_docx(item, tpl)
             elif isinstance(item, (dict, list)):
                 process_context(item, tpl)
@@ -199,11 +268,21 @@ def generate_document():
             #env = Environment(loader=BaseLoader(), autoescape=False)
             #env.filters['html2richtext'] = html_to_richtext
             #env.filters['html2docx'] = lambda html: html_to_docx(html, doc)
+
+            logging.debug("Antes de normalizar")
+            context = normalize_unicode(context)
+
+            save_json_for_debugging(context)
+
+            logging.debug("Antes de process_context")
             process_context(context, doc)
+
+            logging.debug("Antes de render")
             doc.render(context) #p, jinja_env=env)
 
         except Exception as e:
             logging.error(f"Error al renderizar la plantilla: {str(e)}")
+            logging.error(f"Context: {str(context)}")
             return jsonify({"error": "Error al renderizar la plantilla con los datos proporcionados."}), 400
 
         # Guardar el documento rellenado en un archivo temporal
