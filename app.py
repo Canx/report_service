@@ -36,29 +36,41 @@ def save_json_for_debugging(context, filename="debug_context.json"):
 def clean_html(html):
     """
     Limpia el HTML antes de pasarlo a la conversión a DOCX.
+    - Elimina estilos inline.
+    - Elimina etiquetas vacías.
+    - Desanida etiquetas innecesarias (como <span> sin atributos).
     """
     try:
-        # 1. Decodificar entidades HTML (&amp;, &#160;, etc.)
+        # 1. Reemplazo de entidades comunes
         html = html.replace("&#58;", ":").replace("&#160;", " ")
 
-        # 2. Usar BeautifulSoup para limpiar estilos y etiquetas raras
+        # 2. Parsear HTML
         soup = BeautifulSoup(html, "html.parser")
 
-        # 3. Eliminar `div.ExternalClass...`
+        # 3. Quitar divs con clase ExternalClass
         for div in soup.find_all("div", class_=re.compile(r"ExternalClass")):
-            div.unwrap()  # Quita el div y deja el contenido dentro
+            div.unwrap()
 
-        # 4. Eliminar estilos innecesarios (color, background, etc.)
-        for tag in soup.find_all(["span", "p", "h1", "h3"]):
+        # 4. Eliminar estilos inline problemáticos
+        for tag in soup.find_all():
             if tag.has_attr("style"):
-                del tag["style"]  # Borra estilos problemáticos
+                del tag["style"]
 
-        # 5. Retornar el HTML limpio
+        # 5. Desanidar etiquetas innecesarias (span, font, etc.)
+        for tag in soup.find_all(["span", "font"]):
+            if not tag.attrs:
+                tag.unwrap()
+
+        # 6. Eliminar etiquetas vacías (que no contienen texto ni hijos significativos)
+        for tag in soup.find_all():
+            if tag.name not in ['br', 'img'] and not tag.get_text(strip=True) and not tag.find():
+                tag.decompose()
+
         return str(soup)
 
     except Exception as e:
         logging.error(f"Error al limpiar HTML: {str(e)}")
-        return html  # Si algo falla, devolver HTML original
+        return html
 
 
 
@@ -139,32 +151,33 @@ def html_to_docx(html, tpl):
     return subdoc
 
 
-
 def process_context(context, tpl):
-    """
-    Recorre recursivamente el contexto y, si encuentra una cadena que parece HTML,
-    la reemplaza por el objeto subdocumento generado.
-    
-    Esta función revisa:
-      - Si context es un diccionario, recorre sus claves.
-      - Si context es una lista, recorre cada elemento.
-      - Si se encuentra un objeto que sea diccionario o lista anidada, se llama a la función de forma recursiva.
-    """
     if isinstance(context, dict):
+        new_context = {}
         for key, value in context.items():
             if isinstance(value, str) and looks_like_html(value):
                 logging.debug(f"Limpiando HTML en {key}")
-                value = clean_html(value)  # Aplicar la limpieza antes de la conversión
-                context[key] = html_to_docx(value, tpl)
+                value = clean_html(value)
+                new_context[key] = html_to_docx(value, tpl)
             elif isinstance(value, (dict, list)):
-                process_context(value, tpl)
+                new_context[key] = process_context(value, tpl)
+            else:
+                new_context[key] = value
+        return new_context
+
     elif isinstance(context, list):
-        for i, item in enumerate(context):
+        new_list = []
+        for item in context:
             if isinstance(item, str) and looks_like_html(item):
-                item = clean_html(item)  # Añadir limpieza aquí también
-                context[i] = html_to_docx(item, tpl)
+                item = clean_html(item)
+                new_list.append(html_to_docx(item, tpl))
             elif isinstance(item, (dict, list)):
-                process_context(item, tpl)
+                new_list.append(process_context(item, tpl))
+            else:
+                new_list.append(item)
+        return new_list
+
+    return context  # Si no es dict ni lista
 
 
 
@@ -272,10 +285,11 @@ def generate_document():
             logging.debug("Antes de normalizar")
             context = normalize_unicode(context)
 
-            save_json_for_debugging(context)
 
             logging.debug("Antes de process_context")
-            process_context(context, doc)
+            context = process_context(context, doc)
+
+            save_json_for_debugging(context)
 
             logging.debug("Antes de render")
             doc.render(context) #p, jinja_env=env)
