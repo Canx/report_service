@@ -33,38 +33,79 @@ def save_json_for_debugging(context, filename="debug_context.json"):
         logging.error(f"Error al guardar el JSON de depuración: {str(e)}")
 
 
+def clean_context_html(context):
+    """
+    Recorre recursivamente el contexto y, si encuentra una cadena que parece HTML,
+    la reemplaza por la versión limpia obtenida con clean_html.
+    """
+    if isinstance(context, dict):
+        new_context = {}
+        for key, value in context.items():
+            if isinstance(value, str) and looks_like_html(value):
+                logging.debug(f"Limpieza HTML en {key}")
+                new_context[key] = clean_html(value)
+            elif isinstance(value, (dict, list)):
+                new_context[key] = clean_context_html(value)
+            else:
+                new_context[key] = value
+        return new_context
+    elif isinstance(context, list):
+        new_list = []
+        for item in context:
+            if isinstance(item, str) and looks_like_html(item):
+                new_list.append(clean_html(item))
+            elif isinstance(item, (dict, list)):
+                new_list.append(clean_context_html(item))
+            else:
+                new_list.append(item)
+        return new_list
+    return context
+
+
 def clean_html(html):
     """
-    Limpia el HTML antes de pasarlo a la conversión a DOCX.
-    - Elimina estilos inline.
-    - Elimina etiquetas vacías.
-    - Desanida etiquetas innecesarias (como <span> sin atributos).
+    Limpia el HTML antes de la conversión a DOCX:
+      - Decodifica entidades.
+      - Elimina atributos innecesarios (style, dir).
+      - Desanida etiquetas <span> sin atributos.
+      - Elimina elementos vacíos.
+      - Desenvuelve contenedores problemáticos (div con ExternalClass y <tbody>).
+      - Simplifica la estructura de las tablas desanidando <p> dentro de <td>.
     """
     try:
-        # 1. Reemplazo de entidades comunes
+        # Decodificar entidades comunes
         html = html.replace("&#58;", ":").replace("&#160;", " ")
-
-        # 2. Parsear HTML
         soup = BeautifulSoup(html, "html.parser")
 
-        # 3. Quitar divs con clase ExternalClass
+        # Desenvolver <div> con clases tipo ExternalClass
         for div in soup.find_all("div", class_=re.compile(r"ExternalClass")):
             div.unwrap()
 
-        # 4. Eliminar estilos inline problemáticos
+        # Eliminar atributos 'style' y 'dir'
         for tag in soup.find_all():
             if tag.has_attr("style"):
                 del tag["style"]
+            if tag.has_attr("dir"):
+                del tag["dir"]
 
-        # 5. Desanidar etiquetas innecesarias (span, font, etc.)
-        for tag in soup.find_all(["span", "font"]):
-            if not tag.attrs:
-                tag.unwrap()
+        # Desanidar <span> sin atributos
+        for span in soup.find_all("span"):
+            if not span.attrs:
+                span.unwrap()
 
-        # 6. Eliminar etiquetas vacías (que no contienen texto ni hijos significativos)
+        # Eliminar elementos vacíos (excepto <br> o <img>)
         for tag in soup.find_all():
-            if tag.name not in ['br', 'img'] and not tag.get_text(strip=True) and not tag.find():
+            if tag.name not in ['br', 'img'] and not tag.get_text(strip=True):
                 tag.decompose()
+
+        # Desenvolver <tbody> para simplificar la estructura de la tabla
+        for tbody in soup.find_all("tbody"):
+            tbody.unwrap()
+
+        # Simplificar la tabla: quitar etiquetas <p> dentro de <td> para reducir el anidamiento
+        for td in soup.find_all("td"):
+            for p in td.find_all("p"):
+                p.unwrap()
 
         return str(soup)
 
@@ -152,33 +193,44 @@ def html_to_docx(html, tpl):
 
 
 def process_context(context, tpl):
+    """
+    Recorre recursivamente el contexto y, si encuentra una cadena que parece HTML,
+    la reemplaza por el objeto subdocumento generado con html_to_docx.
+    Se agregan bloques try/except para capturar y registrar errores durante la conversión.
+    """
     if isinstance(context, dict):
         new_context = {}
         for key, value in context.items():
-            if isinstance(value, str) and looks_like_html(value):
-                logging.debug(f"Limpiando HTML en {key}")
-                value = clean_html(value)
-                new_context[key] = html_to_docx(value, tpl)
-            elif isinstance(value, (dict, list)):
-                new_context[key] = process_context(value, tpl)
-            else:
+            try:
+                if isinstance(value, str) and looks_like_html(value):
+                    new_context[key] = html_to_docx(value, tpl)
+                elif isinstance(value, (dict, list)):
+                    new_context[key] = process_context(value, tpl)
+                else:
+                    new_context[key] = value
+            except Exception as e:
+                logging.error(f"Error procesando la clave '{key} {str(e)}':{str(value)}")
+                # Si ocurre un error, conservamos el valor original para evitar romper el proceso
                 new_context[key] = value
         return new_context
 
     elif isinstance(context, list):
         new_list = []
-        for item in context:
-            if isinstance(item, str) and looks_like_html(item):
-                item = clean_html(item)
-                new_list.append(html_to_docx(item, tpl))
-            elif isinstance(item, (dict, list)):
-                new_list.append(process_context(item, tpl))
-            else:
+        for idx, item in enumerate(context):
+            try:
+                if isinstance(item, str) and looks_like_html(item):
+                    new_list.append(html_to_docx(item, tpl))
+                elif isinstance(item, (dict, list)):
+                    new_list.append(process_context(item, tpl))
+                else:
+                    new_list.append(item)
+            except Exception as e:
+                logging.error(f"Error procesando el índice {idx}: {str(e)}")
+                # Si ocurre un error, se agrega el elemento original
                 new_list.append(item)
         return new_list
 
-    return context  # Si no es dict ni lista
-
+    return context
 
 
 def html_to_richtext(html):
@@ -285,11 +337,14 @@ def generate_document():
             logging.debug("Antes de normalizar")
             context = normalize_unicode(context)
 
+            logging.debug("Antes de clean_context_html")
+            context = clean_context_html(context)
+ 
+            save_json_for_debugging(context)
 
             logging.debug("Antes de process_context")
             context = process_context(context, doc)
 
-            save_json_for_debugging(context)
 
             logging.debug("Antes de render")
             doc.render(context) #p, jinja_env=env)
